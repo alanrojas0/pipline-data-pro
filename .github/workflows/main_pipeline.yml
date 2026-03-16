@@ -1,0 +1,20 @@
+name: Ejecutar Pipeline de Datos en Docker
+
+on:
+  push:
+    branches: [ "main" ]  # Se activa cada vez que guardas cambios en la rama main
+  workflow_dispatch:      # Esto te permite ejecutarlo manualmente con un botón
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest  # GitHub nos presta una máquina Linux potente
+
+    steps:
+    - name: 1. Descargar el código del repositorio
+      uses: actions/checkout@v3
+
+    - name: 2. Construir la imagen de Docker
+      run: docker build -t pipeline-pro-image .
+
+    - name: 3. Ejecutar el Pipeline (ETL)
+      run: docker run pipeline-pro-image
