@@ -1,33 +1,32 @@
 import pandas as pd
 import sqlite3
+import matplotlib.pyplot as plt # <--- Nueva librería para gráficas
 import os
 
 def run_pro_pipeline():
-    print("🚀 Iniciando Pipeline de Alto Nivel...")
+    print("🚀 Iniciando Pipeline de Alto Nivel con Reporte Visual...")
+    
+    # Asegurar que las carpetas existan (Buena práctica de ingeniería)
+    for folder in ['data/silver', 'data/gold']:
+        os.makedirs(folder, exist_ok=True)
     
     # --- PASO 1: INGESTA (BRONZE) ---
     df_raw = pd.read_csv('data/bronze/ventas_raw.csv')
     
     # --- PASO 2: LIMPIEZA TÉCNICA (PANDAS -> SILVER) ---
     print("🧹 Limpiando datos con DataFrames...")
-    
-    # A. Eliminar filas donde el producto es nulo
     df_clean = df_raw.dropna(subset=['producto']).copy()
-    
-    # B. Limpieza de strings (Quitar espacios y poner Capitalize)
     df_clean['producto'] = df_clean['producto'].str.strip().str.title()
-    
-    # C. Asegurar que los montos sean números y filtrar negativos
     df_clean['monto'] = pd.to_numeric(df_clean['monto'], errors='coerce')
     df_clean = df_clean[df_clean['monto'] > 0]
     
-    # D. Guardar en SQL (Capa Silver)
+    # Guardar en SQL (Capa Silver)
     conn = sqlite3.connect('data/silver/analytics.db')
     df_clean.to_sql('ventas_silver', conn, if_exists='replace', index=False)
     print("✅ Datos limpios cargados en Silver (SQLite)")
 
-    # --- PASO 3: LÓGICA DE NEGOCIO (SQL -> GOLD) ---
-    print("📊 Generando reportes con SQL...")
+    # --- PASO 3: LÓGICA DE NEGOCIO Y GRÁFICA (GOLD) ---
+    print("📊 Generando reportes y visualizaciones...")
     query_gold = """
     SELECT 
         producto,
@@ -37,14 +36,24 @@ def run_pro_pipeline():
     GROUP BY producto
     ORDER BY venta_total DESC
     """
-    
     df_gold = pd.read_sql(query_gold, conn)
     
-    # Guardar resultado final
-    df_gold.to_csv('data/gold/reporte_final.csv', index=False)
-    conn.close()
+    # --- NUEVO: Generar Gráfica de Barras ---
+    plt.figure(figsize=(10, 6))
+    plt.bar(df_gold['producto'], df_gold['venta_total'], color='skyblue')
+    plt.title('Ventas Totales por Producto (Capa Gold)')
+    plt.xlabel('Producto')
+    plt.ylabel('Monto ($)')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
     
-    print("🏆 Pipeline finalizado. Reporte Gold generado:")
+    # Guardar los "Artifacts" (Resultados finales)
+    df_gold.to_csv('data/gold/reporte_final.csv', index=False)
+    plt.savefig('data/gold/grafico_ventas.png') # <--- Guarda la imagen
+    
+    conn.close()
+    print("🏆 Pipeline finalizado con éxito.")
+    print("📂 Archivos generados en data/gold/: reporte_final.csv y grafico_ventas.png")
     print(df_gold)
 
 if __name__ == "__main__":

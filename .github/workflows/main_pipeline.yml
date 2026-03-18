@@ -2,19 +2,28 @@ name: Ejecutar Pipeline de Datos en Docker
 
 on:
   push:
-    branches: [ "main" ]  # Se activa cada vez que guardas cambios en la rama main
-  workflow_dispatch:      # Esto te permite ejecutarlo manualmente con un botón
+    branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build-and-run:
-    runs-on: ubuntu-latest  # GitHub nos presta una máquina Linux potente
+    runs-on: ubuntu-latest
 
     steps:
     - name: 1. Descargar el código del repositorio
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4 # Actualizado a v4 (más estable)
 
     - name: 2. Construir la imagen de Docker
       run: docker build -t pipeline-pro-image .
 
     - name: 3. Ejecutar el Pipeline (ETL)
-      run: docker run pipeline-pro-image
+      # El comando -v mapea la carpeta de Docker con la de GitHub para rescatar los archivos
+      run: |
+        docker run -v ${{ github.workspace }}/data:/app/data pipeline-pro-image
+
+    - name: 4. 📦 Subir resultados (Artifacts)
+      if: success() # Solo se ejecuta si el pipeline terminó bien
+      uses: actions/upload-artifact@v4
+      with:
+        name: reporte-y-grafica-ventas
+        path: data/gold/
