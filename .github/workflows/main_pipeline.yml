@@ -11,27 +11,20 @@ jobs:
 
     steps:
     - name: 1. Descargar el código del repositorio
-      uses: actions/checkout@v4 # Actualizado a v4 (más estable)
+      uses: actions/checkout@v4
 
     - name: 2. Construir la imagen de Docker
       run: docker build -t pipeline-pro-image .
 
     - name: 3. Ejecutar el Pipeline (ETL)
-      # El comando -v mapea la carpeta de Docker con la de GitHub para rescatar los archivos
       run: |
         docker run -v ${{ github.workspace }}/data:/app/data pipeline-pro-image
 
     - name: 4. 📦 Subir resultados (Artifacts)
-      if: success() # Solo se ejecuta si el pipeline terminó bien
+      if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: reporte-y-grafica-ventas
-        path: data/gold/
-
-    - name: 5. 📦 Subir resultados (Artifacts)
-            uses: actions/upload-artifact@v4
-            with:
-              name: reporte-completo-y-rechazos
-              path: |
-                data/gold/
-            data/rejected/
+        name: reporte-completo-y-rechazos
+        path: |
+          data/gold/
+          data/rejected/
