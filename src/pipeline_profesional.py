@@ -45,18 +45,26 @@ def run_pro_pipeline():
         'ventas_silver', conn, if_exists='replace', index=False
     )
     
-    # --- PASO 4: REPORTE GOLD ---
+# --- PASO 4: REPORTE GOLD ---
     query_gold = "SELECT producto, SUM(monto_limpio) as total FROM ventas_silver GROUP BY producto"
     df_gold = pd.read_sql(query_gold, conn)
     
-    # Guardar resultados
+    # Guardar resultados CSV
     df_gold.to_csv('data/gold/reporte_final.csv', index=False)
     
-    # Gráfica
-    plt.figure(figsize=(8, 5))
-    plt.bar(df_gold['producto'], df_gold['total'], color='orange')
-    plt.title('Ventas Validadas (Capa Gold)')
-    plt.savefig('data/gold/grafico_ventas.png')
+    # 📊 Gráfica Segura
+    if not df_gold.empty: # <--- Seguridad: Solo graficar si hay datos
+        plt.figure(figsize=(8, 5))
+        # Aseguramos que no haya nulos antes de graficar
+        df_plot = df_gold.dropna(subset=['producto', 'total'])
+        plt.bar(df_plot['producto'], df_plot['total'], color='orange')
+        plt.title('Ventas Validadas (Capa Gold)')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.savefig('data/gold/grafico_ventas.png')
+        print("✅ Gráfica generada exitosamente.")
+    else:
+        print("⚠️ No hay datos válidos para graficar.")
     
     conn.close()
     print("🏆 Pipeline finalizado. Solo los datos de calidad llegaron al reporte.")
