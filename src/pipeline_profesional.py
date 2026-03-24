@@ -38,15 +38,31 @@ def run_pro_pipeline():
         df_rejected.to_csv('data/rejected/ventas_fallidas.csv', index=False)
         print(f"⚠️ Se encontraron {len(df_rejected)} filas con errores. Guardadas en data/rejected/")
 
-    # --- PASO 3: CARGA A SILVER (SQL) ---
-    df_clean['producto'] = df_clean['producto'].str.strip().str.title()
+    # --- PASO 3: MODELADO ESTRELLA (SILVER) ---
     conn = sqlite3.connect('data/silver/analytics.db')
-    df_clean[['id', 'producto', 'monto_limpio', 'fecha_limpia']].to_sql(
-        'ventas_silver', conn, if_exists='replace', index=False
-    )
+    
+    # A. Tabla de DIMENSIÓN: Productos (Solo valores únicos)
+    df_dim_productos = df_clean[['producto']].drop_duplicates().reset_index(drop=True)
+    df_dim_productos['id_producto'] = df_dim_productos.index + 1
+    df_dim_productos.to_sql('dim_productos', conn, if_exists='replace', index=False)
+
+    # B. Tabla de HECHOS: Ventas (Referenciando el id_producto)
+    df_fact_ventas = df_clean.merge(df_dim_productos, on='producto')
+    df_fact_ventas = df_fact_ventas[['id', 'id_producto', 'monto_limpio', 'fecha_limpia']]
+    df_fact_ventas.to_sql('fact_ventas', conn, if_exists='replace', index=False)
+    
+    print("✨ Modelo Estrella creado: dim_productos y fact_ventas.")
     
 # --- PASO 4: REPORTE GOLD ---
-    query_gold = "SELECT producto, SUM(monto_limpio) as total FROM ventas_silver GROUP BY producto"
+    # --- PASO 4: REPORTE GOLD (USANDO JOINS) ---
+    query_gold = """
+    SELECT 
+        p.producto, 
+        SUM(v.monto_limpio) as total 
+    FROM fact_ventas v
+    JOIN dim_productos p ON v.id_producto = p.id_producto
+    GROUP BY p.producto
+    """
     df_gold = pd.read_sql(query_gold, conn)
     
     # Guardar resultados CSV
