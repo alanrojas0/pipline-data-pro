@@ -1,60 +1,65 @@
 import pandas as pd
 import sqlite3
-import matplotlib.pyplot as plt # <--- Nueva librería para gráficas
+import matplotlib.pyplot as plt
 import os
 
 def run_pro_pipeline():
-    print("🚀 Iniciando Pipeline de Alto Nivel con Reporte Visual...")
+    print("🚀 Iniciando Pipeline con Validación de Calidad...")
     
-    # Asegurar que las carpetas existan (Buena práctica de ingeniería)
-    for folder in ['data/silver', 'data/gold']:
+    # Crear carpetas necesarias incluyendo la de rechazos
+    for folder in ['data/silver', 'data/gold', 'data/rejected']:
         os.makedirs(folder, exist_ok=True)
     
-    # --- PASO 1: INGESTA (BRONZE) ---
+    # --- PASO 1: INGESTA ---
     df_raw = pd.read_csv('data/bronze/ventas_raw.csv')
     
-    # --- PASO 2: LIMPIEZA TÉCNICA (PANDAS -> SILVER) ---
-    print("🧹 Limpiando datos con DataFrames...")
-    df_clean = df_raw.dropna(subset=['producto']).copy()
-    df_clean['producto'] = df_clean['producto'].str.strip().str.title()
-    df_clean['monto'] = pd.to_numeric(df_clean['monto'], errors='coerce')
-    df_clean = df_clean[df_clean['monto'] > 0]
+    # --- PASO 2: VALIDACIÓN Y LIMPIEZA (PANDAS) ---
+    print("🔍 Validando calidad de datos...")
     
-    # Guardar en SQL (Capa Silver)
-    conn = sqlite3.connect('data/silver/analytics.db')
-    df_clean.to_sql('ventas_silver', conn, if_exists='replace', index=False)
-    print("✅ Datos limpios cargados en Silver (SQLite)")
+    # Intentar convertir monto a número (lo que no sea número será NaN)
+    df_raw['monto_limpio'] = pd.to_numeric(df_raw['monto'], errors='coerce')
+    
+    # Intentar convertir fecha (lo que sea '99-99' será NaT)
+    df_raw['fecha_limpia'] = pd.to_datetime(df_raw['fecha'], errors='coerce')
+    
+    # ❌ SEPARAR RECHAZADOS: Filas con monto inválido, sin producto o fecha errónea
+    mask_error = (
+        df_raw['monto_limpio'].isna() | 
+        df_raw['producto'].isna() | 
+        df_raw['monto_limpio'] <= 0 |
+        df_raw['fecha_limpia'].isna()
+    )
+    
+    df_rejected = df_raw[mask_error]
+    df_clean = df_raw[~mask_error].copy()
+    
+    # Guardar rechazados para auditoría
+    if not df_rejected.empty:
+        df_rejected.to_csv('data/rejected/ventas_fallidas.csv', index=False)
+        print(f"⚠️ Se encontraron {len(df_rejected)} filas con errores. Guardadas en data/rejected/")
 
-    # --- PASO 3: LÓGICA DE NEGOCIO Y GRÁFICA (GOLD) ---
-    print("📊 Generando reportes y visualizaciones...")
-    query_gold = """
-    SELECT 
-        producto,
-        SUM(monto) as venta_total,
-        COUNT(*) as cantidad_operaciones
-    FROM ventas_silver
-    GROUP BY producto
-    ORDER BY venta_total DESC
-    """
+    # --- PASO 3: CARGA A SILVER (SQL) ---
+    df_clean['producto'] = df_clean['producto'].str.strip().str.title()
+    conn = sqlite3.connect('data/silver/analytics.db')
+    df_clean[['id', 'producto', 'monto_limpio', 'fecha_limpia']].to_sql(
+        'ventas_silver', conn, if_exists='replace', index=False
+    )
+    
+    # --- PASO 4: REPORTE GOLD ---
+    query_gold = "SELECT producto, SUM(monto_limpio) as total FROM ventas_silver GROUP BY producto"
     df_gold = pd.read_sql(query_gold, conn)
     
-    # --- NUEVO: Generar Gráfica de Barras ---
-    plt.figure(figsize=(10, 6))
-    plt.bar(df_gold['producto'], df_gold['venta_total'], color='skyblue')
-    plt.title('Ventas Totales por Producto (Capa Gold)')
-    plt.xlabel('Producto')
-    plt.ylabel('Monto ($)')
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    
-    # Guardar los "Artifacts" (Resultados finales)
+    # Guardar resultados
     df_gold.to_csv('data/gold/reporte_final.csv', index=False)
-    plt.savefig('data/gold/grafico_ventas.png') # <--- Guarda la imagen
+    
+    # Gráfica
+    plt.figure(figsize=(8, 5))
+    plt.bar(df_gold['producto'], df_gold['total'], color='orange')
+    plt.title('Ventas Validadas (Capa Gold)')
+    plt.savefig('data/gold/grafico_ventas.png')
     
     conn.close()
-    print("🏆 Pipeline finalizado con éxito.")
-    print("📂 Archivos generados en data/gold/: reporte_final.csv y grafico_ventas.png")
-    print(df_gold)
+    print("🏆 Pipeline finalizado. Solo los datos de calidad llegaron al reporte.")
 
 if __name__ == "__main__":
     run_pro_pipeline()

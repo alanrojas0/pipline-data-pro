@@ -27,3 +27,11 @@ jobs:
       with:
         name: reporte-y-grafica-ventas
         path: data/gold/
+
+    - name: 5. 📦 Subir resultados (Artifacts)
+            uses: actions/upload-artifact@v4
+            with:
+              name: reporte-completo-y-rechazos
+              path: |
+                data/gold/
+            data/rejected/
