@@ -18,13 +18,19 @@ def run_spark_pipeline():
     # Spark lee el CSV y 'adivina' los tipos de datos (inferSchema)
     df = spark.read.option("header", "true").option("inferSchema", "true").csv("data/bronze/ventas_raw.csv")
 
-    # 3. CALIDAD Y LIMPIEZA (Capa Silver)
-    # Aquí aplicamos la lógica de validación que pide el puesto
-    # Filtramos nulos y montos inválidos en paralelo
-    df_clean = df.filter(
+# 3. CALIDAD Y LIMPIEZA (Capa Silver)
+    # Convertimos monto a double. Si no es un número, Spark pondrá NULL automáticamente.
+    df_with_types = df.withColumn("monto_double", col("monto").cast("double"))
+
+    # Ahora filtramos: 
+    # 1. Que el producto no sea nulo
+    # 2. Que el monto_double NO sea nulo (esto elimina la palabra 'ERROR')
+    # 3. Que el monto sea mayor a 0
+    df_clean = df_with_types.filter(
         (col("producto").isNotNull()) & 
-        (col("monto").cast("double") > 0)
-    ).withColumn("monto_double", col("monto").cast("double"))
+        (col("monto_double").isNotNull()) & 
+        (col("monto_double") > 0)
+    )
 
     # 4. MODELADO ESTRELLA (Capa Gold)
     # Agrupación por producto (Operación de Shuffling en el cluster)
