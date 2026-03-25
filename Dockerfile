@@ -2,9 +2,9 @@
 FROM python:3.10-slim
 
 # 2. INSTALACIÓN DE JAVA (Crítico para Spark)
-# Usamos openjdk-17 que es estable y ligero
+# Instalación de JAVA (Actualizado a la versión 21)
 RUN apt-get update && apt-get install -y \
-    openjdk-17-jre-headless \
+    openjdk-21-jre-headless \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
