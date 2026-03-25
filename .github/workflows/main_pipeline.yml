@@ -3,7 +3,13 @@ name: Ejecutar Pipeline de Datos en Docker
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch:
+  
+  # --- SCHEDULER COMENTADO (Referencia para el puesto de Data Engineer) ---
+  # schedule:
+  #   - cron: '0 11 * * 1' # Esto ejecutaría el proceso cada lunes a las 8:00 AM Chile
+  # -----------------------------------------------------------------------
+
+  workflow_dispatch: # Mantenemos el botón para ejecución manual
 
 jobs:
   build-and-run:
