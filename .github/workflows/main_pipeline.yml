@@ -6,10 +6,10 @@ on:
   
   # --- SCHEDULER COMENTADO (Referencia para el puesto de Data Engineer) ---
   # schedule:
-  #   - cron: '0 11 * * 1' # Esto ejecutaría el proceso cada lunes a las 8:00 AM Chile
+  #   - cron: '0 11 * * 1' # Ejecución cada lunes a las 8:00 AM Chile
   # -----------------------------------------------------------------------
 
-  workflow_dispatch: # Mantenemos el botón para ejecución manual
+  workflow_dispatch: # Permite ejecución manual desde la pestaña Actions
 
 jobs:
   build-and-run:
@@ -22,11 +22,18 @@ jobs:
     - name: 2. Construir la imagen de Docker
       run: docker build -t pipeline-pro-image .
 
-    - name: 3. Ejecutar el Pipeline (ETL)
+    - name: 3. 🧪 Ejecutar Pruebas Unitarias (Pytest)
+      # Si este paso falla, el pipeline se detiene aquí y no procesa datos.
+      run: |
+        docker run pipeline-pro-image pytest tests/test_pipeline.py
+
+    - name: 4. Ejecutar el Pipeline (ETL)
+      # Solo se ejecuta si los tests de arriba pasaron ✅
       run: |
         docker run -v ${{ github.workspace }}/data:/app/data pipeline-pro-image
 
-    - name: 4. 📦 Subir resultados (Artifacts)
+    - name: 5. 📦 Subir resultados (Artifacts)
+      # Solo sube archivos si todo el proceso fue exitoso
       if: success()
       uses: actions/upload-artifact@v4
       with:
