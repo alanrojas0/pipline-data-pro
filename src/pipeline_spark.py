@@ -1,47 +1,41 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, sum as _sum, expr 
+from pyspark.sql.functions import col, sum as _sum, expr, to_date 
 import os
 
 def run_spark_pipeline():
     spark = SparkSession.builder \
-        .appName("DataEngineer_SanMiguel_Governance") \
+        .appName("DataEngineer_SanMiguel_Partitioning") \
         .getOrCreate()
     
-    print("🚀 Iniciando Pipeline con Gobernanza de Datos...")
+    print("🚀 Iniciando Pipeline con Particionamiento por Fecha...")
 
     # 1. INGESTA (Capa Bronze)
     df = spark.read.option("header", "true").option("inferSchema", "true").csv("data/bronze/ventas_raw.csv")
 
-    # 2. VALIDACIÓN (Capa Silver)
-    # Aplicamos try_cast para identificar qué es basura
-    df_transformed = df.withColumn("monto_double", expr("try_cast(monto as double)"))
+    # 2. TRANSFORMACIÓN Y LIMPIEZA (Capa Silver)
+    # Convertimos 'monto' de forma segura y 'fecha' a tipo Date real
+    df_transformed = df.withColumn("monto_double", expr("try_cast(monto as double)")) \
+                       .withColumn("fecha_dt", to_date(col("fecha"), "yyyy-MM-dd"))
 
-    # SEPARACIÓN DE CAMINOS:
-    # Registros válidos
+    # Filtramos registros válidos
     df_clean = df_transformed.filter(
         (col("producto").isNotNull()) & 
         (col("monto_double").isNotNull()) & 
-        (col("monto_double") > 0)
+        (col("monto_double") > 0) &
+        (col("fecha_dt").isNotNull())
     )
 
-    # Registros RECHAZADOS (Lo que el casting no pudo procesar)
-    df_rejected = df_transformed.filter(
-        (col("producto").isNull()) | 
-        (col("monto_double").isNull()) | 
-        (col("monto_double") <= 0)
-    )
+    # 3. MODELADO (Capa Gold)
+    # Agrupamos por producto Y fecha para mantener el detalle diario
+    df_gold = df_clean.groupBy("producto", "fecha_dt").agg(_sum("monto_double").alias("total_ventas"))
 
-    # 3. GUARDAR RESULTADOS (Capa Gold y Rejected)
-    # Guardamos los buenos en Parquet para analítica masiva
-    df_gold = df_clean.groupBy("producto").agg(_sum("monto_double").alias("total_ventas"))
-    df_gold.write.mode("overwrite").parquet("data/gold/reporte_ventas_parquet")
-
-    # Guardamos los malos en CSV para que alguien los revise manualmente
-    df_rejected.write.mode("overwrite").option("header", "true").csv("data/rejected/ventas_fallidas")
+    # 4. SALIDA PARTICIONADA
+    # Aquí ocurre la magia: partitionBy crea carpetas físicas por fecha
+    df_gold.write.mode("overwrite") \
+        .partitionBy("fecha_dt") \
+        .parquet("data/gold/reporte_ventas_particionado")
     
-    print(f"✅ Proceso terminado.")
-    print(f"📊 Registros procesados correctamente: {df_clean.count()}")
-    print(f"⚠️ Registros rechazados: {df_rejected.count()}")
+    print("✅ Pipeline finalizado. Datos particionados por fecha.")
     df_gold.show()
 
 if __name__ == "__main__":
