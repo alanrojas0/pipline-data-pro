@@ -13,16 +13,25 @@ def run_spark_pipeline():
     df = spark.read.option("header", "true").option("inferSchema", "true").csv("data/bronze/ventas_raw.csv")
 
     # 2. TRANSFORMACIÓN Y LIMPIEZA (Capa Silver)
-    # Convertimos 'monto' de forma segura y 'fecha' a tipo Date real
+    # Usamos try_cast para el monto y try_to_date para la fecha
     df_transformed = df.withColumn("monto_double", expr("try_cast(monto as double)")) \
-                       .withColumn("fecha_dt", to_date(col("fecha"), "yyyy-MM-dd"))
+                       .withColumn("fecha_dt", expr("try_to_date(fecha, 'yyyy-MM-dd')"))
 
-    # Filtramos registros válidos
+    # SEPARACIÓN DE CAMINOS:
+    # Registros válidos (Tienen producto, monto > 0 y FECHA VÁLIDA)
     df_clean = df_transformed.filter(
         (col("producto").isNotNull()) & 
         (col("monto_double").isNotNull()) & 
         (col("monto_double") > 0) &
         (col("fecha_dt").isNotNull())
+    )
+
+    # Registros RECHAZADOS (Cualquier cosa que haya fallado el cast o el date)
+    df_rejected = df_transformed.filter(
+        (col("producto").isNull()) | 
+        (col("monto_double").isNull()) | 
+        (col("monto_double") <= 0) |
+        (col("fecha_dt").isNull())
     )
 
     # 3. MODELADO (Capa Gold)
